@@ -24,7 +24,7 @@ uint8_t DATA[8] = {};
 int16_t move0_speed = 0, move1_speed = 0, move2_speed = 0, move3_speed = 0;
 int Takamatsu = 0, UnderUp = 0, bashibashi = 0;
 int servovo = 130;
-int Kodai = 0;
+int Kodai = 90;
 int maxspeed = 10000;
 int Kodaiho = 1000;
 auto pre_PC_1 = HighResClock::time_point();
@@ -177,12 +177,12 @@ void CANSend() {
 
         // バシバシ前後
         if (ps4.R1 == 1) {
-            penguin.pwm[0] = 10000;
-            penguin.pwm[1] = -10000;
+            penguin.pwm[0] = 15000;
+            penguin.pwm[1] = -15000;
         }
         if (ps4.L1 == 1) {
-            penguin.pwm[0] = -10000;
-            penguin.pwm[1] = 10000;
+            penguin.pwm[0] = -15000;
+            penguin.pwm[1] = 15000;
         }
 
         if (ps4.L1 == 0 && ps4.R1 == 0) {
@@ -250,8 +250,8 @@ void CANSend() {
         }
         // 発射
         if (ps4.Triangle == 1) {
-            penguin.pwm[2] = std::min(5000, penguin.pwm[2] + 600);
-            penguin.pwm[3] = std::max(-5000, penguin.pwm[3] - 600);
+            penguin.pwm[2] = std::min(3700, penguin.pwm[2] + 600);
+            penguin.pwm[3] = std::max(-3700, penguin.pwm[3] - 600);
         } else if (ps4.Triangle == 0) {
             penguin.pwm[2] = std::max(0, penguin.pwm[2] - 600);
             penguin.pwm[3] = std::min(0, penguin.pwm[3] + 600);
@@ -278,10 +278,10 @@ void CANSend() {
             MINIMA.pulsewidth_us(Kodaiho);
         }
         if (ps4.Right == 1) {
-            Kodai = 40;
+            Kodai = 90;
         }
         if (ps4.Left == 1) {
-            Kodai = 0;
+            Kodai = 60;
         }
         // 移動
         int move0 = (ps4.LX - ps4.LY - ps4.RX * 0.8) * 10000;
