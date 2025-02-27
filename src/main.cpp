@@ -24,7 +24,7 @@ uint8_t DATA[8] = {};
 int16_t move0_speed = 0, move1_speed = 0, move2_speed = 0, move3_speed = 0;
 int Takamatsu = 0, UnderUp = 0, bashibashi = 0;
 int servovo = 130;
-int Kodai = 90;
+int Kodai = 70;
 int maxspeed = 10000;
 int Kodaiho = 1000;
 auto pre_PC_1 = HighResClock::time_point();
@@ -171,6 +171,8 @@ void CANReceive() {
 bool toggle_flag = false;
 auto pre_servo = HighResClock::time_point();
 
+bool angle_flag = false;
+auto pre_Kodaiho = HighResClock::time_point();
 void CANSend() {
     while (1) {
         PC_10_flag = SW_10.read();
@@ -238,7 +240,7 @@ void CANSend() {
             DATA[0] = Takamatsu416 >> 8;
             DATA[1] = Takamatsu416 & 0xFF;
         } else if (ps4.R1 == 1 && PC_10_flag == 0) {
-            int16_t Takamatsu416 = static_cast<int16_t>(500);
+            int16_t Takamatsu416 = static_cast<int16_t>(1000);
             DATA[0] = Takamatsu416 >> 8;
             DATA[1] = Takamatsu416 & 0xFF;
         } else if (ps4.R1 == 0 && ps4.L1 == 0) {
@@ -267,15 +269,12 @@ void CANSend() {
 
         // サーボ
         auto now_servo = HighResClock::now();
-
         if (pre_servo == HighResClock::time_point()) {
             pre_servo = now_servo;
         }
-
         if (now_servo - pre_servo <= 100ms) {
             return;
         }
-
         if (ps4.Cross == 1) {
             toggle_flag = !toggle_flag;
             servovo = toggle_flag ? 130 : 0;
@@ -289,11 +288,18 @@ void CANSend() {
             Kodaiho = std::max(1000, Kodaiho - 8);
             MINIMA.pulsewidth_us(Kodaiho);
         }
-        if (ps4.Right == 1) {
-            Kodai = 90;
+
+        auto now_Kodaiho = HighResClock::now();
+        if (pre_Kodaiho == HighResClock::time_point()) {
+            pre_Kodaiho = now_Kodaiho;
         }
-        if (ps4.Left == 1) {
-            Kodai = 60;
+        if (now_Kodaiho - pre_Kodaiho <= 100ms) {
+            return;
+        }
+        if (ps4.SHARE == 1) {
+            angle_flag = !angle_flag;
+            Kodai = angle_flag ? 30 : 60;
+            pre_Kodaiho = now_Kodaiho; // タイマーをリセット
         }
         // 移動
         int move0 = (ps4.LX - ps4.LY - ps4.RX * 0.8) * 10000;
