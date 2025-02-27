@@ -168,6 +168,8 @@ void CANReceive() {
         }
     }
 }
+bool toggle_flag = false;
+auto pre_servo = HighResClock::time_point();
 
 void CANSend() {
     while (1) {
@@ -176,16 +178,16 @@ void CANSend() {
         PC_2_flag = SW_2.read();
 
         // バシバシ前後
-        if (ps4.R1 == 1) {
+        if (ps4.Right == 1) {
             penguin.pwm[0] = 15000;
             penguin.pwm[1] = -15000;
         }
-        if (ps4.L1 == 1) {
+        if (ps4.Left == 1) {
             penguin.pwm[0] = -15000;
             penguin.pwm[1] = 15000;
         }
 
-        if (ps4.L1 == 0 && ps4.R1 == 0) {
+        if (ps4.Left == 0 && ps4.Right == 0) {
             penguin.pwm[0] = 0;
             penguin.pwm[1] = 0;
         }
@@ -231,19 +233,19 @@ void CANSend() {
         }
 
         // 高松
-        if (ps4.Up == 1 && PC_10_flag == 1) {
+        if (ps4.R1 == 1 && PC_10_flag == 1) {
             int16_t Takamatsu416 = static_cast<int16_t>(3000);
             DATA[0] = Takamatsu416 >> 8;
             DATA[1] = Takamatsu416 & 0xFF;
-        } else if (ps4.Up == 1 && PC_10_flag == 0) {
+        } else if (ps4.R1 == 1 && PC_10_flag == 0) {
             int16_t Takamatsu416 = static_cast<int16_t>(500);
             DATA[0] = Takamatsu416 >> 8;
             DATA[1] = Takamatsu416 & 0xFF;
-        } else if (ps4.Up == 0 && ps4.SHARE == 0) {
+        } else if (ps4.R1 == 0 && ps4.L1 == 0) {
             int16_t Takamatsu416 = static_cast<int16_t>(0);
             DATA[0] = Takamatsu416 >> 8;
             DATA[1] = Takamatsu416 & 0xFF;
-        } else if (ps4.SHARE == 1) {
+        } else if (ps4.L1 == 1) {
             int16_t Takamatsu416 = static_cast<int16_t>(1500);
             DATA[0] = -Takamatsu416 >> 8;
             DATA[1] = -Takamatsu416 & 0xFF;
@@ -264,10 +266,20 @@ void CANSend() {
         }
 
         // サーボ
+        auto now_servo = HighResClock::now();
+
+        if (pre_servo == HighResClock::time_point()) {
+            pre_servo = now_servo;
+        }
+
+        if (now_servo - pre_servo <= 100ms) {
+            return;
+        }
+
         if (ps4.Cross == 1) {
-            servovo = 0;
-        } else if (ps4.Square == 1) {
-            servovo = 150;
+            toggle_flag = !toggle_flag;
+            servovo = toggle_flag ? 130 : 0;
+            pre_servo = now_servo; // タイマーをリセット
         }
 
         if (ps4.OPTION == 1) {
