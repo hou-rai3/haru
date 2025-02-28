@@ -29,6 +29,8 @@ int maxspeed = 10000;
 int Kodaiho = 1000;
 auto pre_PC_1 = HighResClock::time_point();
 auto pre_PC_2 = HighResClock::time_point();
+auto pre_Kodaiho = HighResClock::time_point();
+auto pre_servo = HighResClock::time_point();
 
 DigitalIn Userbutton(BUTTON1);
 DigitalIn SW_10(PC_10);
@@ -173,10 +175,7 @@ void CANReceive() {
     }
 }
 bool toggle_flag = false;
-auto pre_servo = HighResClock::time_point();
-
 bool angle_flag = false;
-auto pre_Kodaiho = HighResClock::time_point();
 
 void CANSend() {
     while (1) {
@@ -284,16 +283,26 @@ void CANSend() {
 
         // サーボ
         if (ps4.Cross == 1) {
-            Kodai += 1;
+            auto now_servo = HighResClock::now();
+            if (now_servo - pre_servo > 50ms) {
+                toggle_flag = !toggle_flag;
+                servovo = toggle_flag ? 150 : 0;
+                pre_servo = now_servo;
+            }
         }
         if (ps4.Square == 1) {
-            Kodai -= 1;
+            auto now_Kodaiho = HighResClock::now();
+            if (now_Kodaiho - pre_Kodaiho > 50ms) {
+                angle_flag = !angle_flag;
+                Kodai = toggle_flag ? 70 : 0;
+                pre_Kodaiho = now_Kodaiho;
+            }
         }
 
-        if (ps4.Up == 1) {
+        if (ps4.SHARE == 1) {
             Kodaiho = std::min(1650, Kodaiho + 6);
             MINIMA.pulsewidth_us(Kodaiho);
-        } else if (ps4.Up == 0) {
+        } else if (ps4.SHARE == 0) {
             Kodaiho = std::max(1000, Kodaiho - 6);
             MINIMA.pulsewidth_us(Kodaiho);
         }
