@@ -12,7 +12,7 @@ PwmOut MINIMA(D5); // D6
 CAN can1(PA_11, PA_12, 1e6);
 CAN can2(PB_12, PB_13, 1e6);
 FirstPenguin penguin(35, can1);
-BufferedSerial pc(USBTX, USBRX, 250000);
+BufferedSerial pc(USBTX, USBRX, 115200);
 PID pid_controller(0.4, 0.5, 0.001, 0.02);
 PID p_move0(0.5, 0.0, 0.01, 0.02);
 PID p_move1(0.5, 0.0, 0.01, 0.02);
@@ -37,7 +37,6 @@ DigitalIn SW_1(PC_1);
 bool PC_1_flag = false;
 DigitalIn SW_2(PC_2);
 bool PC_2_flag = false;
-
 DigitalIn SWPH_0(PH_0);
 bool PH_0_flag = false;
 DigitalIn SWPH_1(PH_1);
@@ -181,7 +180,6 @@ auto pre_Kodaiho = HighResClock::time_point();
 
 void CANSend() {
     while (1) {
-        printf("[controller_tester]CANSend!!\n");
         PC_10_flag = SW_10.read();
         PC_1_flag = SW_1.read();
         PC_2_flag = SW_2.read();
@@ -225,24 +223,24 @@ void CANSend() {
             pre_PC_2 = HighResClock::time_point();
         }
         // 床
-        if (ps4.R2 == 1 && PH_0_flag == 0) {
+        if (ps4.R2 == 1 && PH_1_flag == 0) {
             int16_t UnderUp416 = static_cast<int16_t>(0);
             DATA[6] = UnderUp416 >> 8;
             DATA[7] = UnderUp416 & 0xFF;
         }
         if (ps4.R2 == 1) {
-            int16_t UnderUp416 = static_cast<int16_t>(1500);
+            int16_t UnderUp416 = static_cast<int16_t>(3000);
             DATA[6] = UnderUp416 >> 8;
             DATA[7] = UnderUp416 & 0xFF;
         }
 
-        if (ps4.L2 == 1 && PH_1_flag == 0) {
+        if (ps4.L2 == 1 && PH_0_flag == 0) {
             int16_t UnderUp416 = static_cast<int16_t>(0);
             DATA[6] = UnderUp416 >> 8;
             DATA[7] = UnderUp416 & 0xFF;
         }
         if (ps4.L2 == 1) {
-            int16_t UnderUp416 = static_cast<int16_t>(1500);
+            int16_t UnderUp416 = static_cast<int16_t>(3000);
             DATA[6] = -UnderUp416 >> 8;
             DATA[7] = -UnderUp416 & 0xFF;
         }
@@ -273,13 +271,13 @@ void CANSend() {
         }
         // 発射
         if (ps4.Triangle == 1) {
-            penguin.pwm[2] = std::min(2700, penguin.pwm[2] + 600);
+            penguin.pwm[2] = std::min(7700, penguin.pwm[2] + 600);
         } else if (ps4.Triangle == 0) {
             penguin.pwm[2] = std::max(0, penguin.pwm[2] - 600);
         }
         //  バシバシ
         if (ps4.Circle == 1) {
-            bashibashi = 2000;
+            bashibashi = 5000;
         } else if (ps4.Circle == 0) {
             bashibashi = 0;
         }
@@ -293,7 +291,7 @@ void CANSend() {
         }
 
         if (ps4.Up == 1) {
-            Kodaiho = std::min(1600, Kodaiho + 6);
+            Kodaiho = std::min(1650, Kodaiho + 6);
             MINIMA.pulsewidth_us(Kodaiho);
         } else if (ps4.Up == 0) {
             Kodaiho = std::max(1000, Kodaiho - 6);
@@ -398,11 +396,12 @@ int main() {
     servo[7] = servovo;
     CANMessage servo_msg(140, servo, 8);
     can2.write(servo_msg);
+
     serial_unit serial(pc);
+    Thread thread1;
     Thread thread2;
-    Thread thread3;
-    thread2.start(CANReceive);
-    thread3.start(CANSend);
+    thread1.start(CANReceive);
+    thread2.start(CANSend);
 
     printf("[controller_tester]setup!!\n");
 
