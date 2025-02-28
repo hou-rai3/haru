@@ -421,6 +421,8 @@ int main() {
     SW_10.mode(PullUp);
     SW_1.mode(PullUp);
     SW_2.mode(PullUp);
+    SWPH_0.mode(PullUp);
+    SWPH_1.mode(PullUp);
 
     while (true) {
         std::string msg = serial.read_serial();
