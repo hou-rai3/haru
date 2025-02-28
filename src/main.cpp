@@ -268,17 +268,11 @@ void CANSend() {
         }
 
         // サーボ
-        auto now_servo = HighResClock::now();
-        if (pre_servo == HighResClock::time_point()) {
-            pre_servo = now_servo;
-        }
-        if (now_servo - pre_servo <= 100ms) {
-            return;
-        }
         if (ps4.Cross == 1) {
-            toggle_flag = !toggle_flag;
-            servovo = toggle_flag ? 130 : 0;
-            pre_servo = now_servo; // タイマーをリセット
+            servovo += 1;
+        }
+        if (ps4.Square == 1) {
+            servovo -= 1;
         }
 
         if (ps4.OPTION == 1) {
@@ -298,7 +292,7 @@ void CANSend() {
         }
         if (ps4.SHARE == 1) {
             angle_flag = !angle_flag;
-            Kodai = angle_flag ? 30 : 60;
+            Kodai += angle_flag ? 1 : -1;
             pre_Kodaiho = now_Kodaiho; // タイマーをリセット
         }
         // 移動
