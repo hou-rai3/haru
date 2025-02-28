@@ -43,7 +43,8 @@ bool PH_0_flag = false;
 DigitalIn SWPH_1(PH_1);
 bool PH_1_flag = false;
 
-typedef struct {
+typedef struct
+{
     double LX;
     double LY;
     double RX;
@@ -71,13 +72,16 @@ typedef struct {
 
 PS2Con ps4;
 
-std::vector<double> to_numbers(const std::string &input) {
+std::vector<double> to_numbers(const std::string &input)
+{
     std::vector<double> numbers;
     std::stringstream ss(input);
     std::string token;
 
-    while (std::getline(ss, token, ':')) { // ':'で区切る
-        if (token.back() == '|') {         // 最後の '|' を削除
+    while (std::getline(ss, token, ':'))
+    { // ':'で区切る
+        if (token.back() == '|')
+        { // 最後の '|' を削除
             token.pop_back();
         }
         numbers.push_back(std::stod(token)); // 文字列をdoubleに変換
@@ -85,7 +89,8 @@ std::vector<double> to_numbers(const std::string &input) {
     return numbers;
 }
 
-void controller_read(const std::string buffer) {
+void controller_read(const std::string buffer)
+{
     if (buffer == "circle:pressing")
         ps4.Circle = 1;
     else if (buffer == "circle:no_pressing")
@@ -148,12 +153,16 @@ void controller_read(const std::string buffer) {
         ps4.Right = 0;
 }
 
-void CANReceive() {
-    while (1) {
+void CANReceive()
+{
+    while (1)
+    {
         CANMessage msg;
-        if (can1.read(msg)) {
+        if (can1.read(msg))
+        {
             // printf("kitayo\n");、
-            switch (msg.id) {
+            switch (msg.id)
+            {
             case 0x201:
                 move0_speed = (msg.data[2] << 8) | msg.data[3];
                 break;
@@ -178,8 +187,10 @@ auto pre_servo = HighResClock::time_point();
 
 bool angle_flag = false;
 auto pre_Kodaiho = HighResClock::time_point();
-void CANSend() {
-    while (1) {
+void CANSend()
+{
+    while (1)
+    {
         PC_10_flag = SW_10.read();
         PC_1_flag = SW_1.read();
         PC_2_flag = SW_2.read();
@@ -187,127 +198,168 @@ void CANSend() {
         PH_1_flag = SWPH_1.read();
 
         // バシバシ前後
-        if (ps4.Right == 1) {
+        if (ps4.Right == 1)
+        {
             penguin.pwm[0] = -15000;
             penguin.pwm[1] = 15000;
         }
-        if (ps4.Left == 1) {
+        if (ps4.Left == 1)
+        {
             penguin.pwm[0] = 15000;
             penguin.pwm[1] = -15000;
         }
-        if (ps4.Left == 0 && ps4.Right == 0) {
+        if (ps4.Left == 0 && ps4.Right == 0)
+        {
             penguin.pwm[0] = 0;
             penguin.pwm[1] = 0;
         }
-        if (PC_1_flag == 0) {
+        if (PC_1_flag == 0)
+        {
             auto now_PC_1 = HighResClock::now();
-            if (pre_PC_1 == HighResClock::time_point()) {
+            if (pre_PC_1 == HighResClock::time_point())
+            {
                 pre_PC_1 = now_PC_1;
             }
-            if (now_PC_1 - pre_PC_1 <= 1000ms) {
+            if (now_PC_1 - pre_PC_1 <= 1000ms)
+            {
                 penguin.pwm[0] = 0;
             }
-        } else {
+        }
+        else
+        {
             pre_PC_1 = HighResClock::time_point();
         }
 
-        if (PC_2_flag == 0) {
+        if (PC_2_flag == 0)
+        {
             auto now_PC_2 = HighResClock::now();
-            if (pre_PC_2 == HighResClock::time_point()) {
+            if (pre_PC_2 == HighResClock::time_point())
+            {
                 pre_PC_2 = now_PC_2;
             }
-            if (now_PC_2 - pre_PC_2 <= 1000ms) {
+            if (now_PC_2 - pre_PC_2 <= 1000ms)
+            {
                 penguin.pwm[1] = 0;
             }
-        } else {
+        }
+        else
+        {
             pre_PC_2 = HighResClock::time_point();
         }
         // 床
-        if (ps4.R2 == 1) {
-            if (PH_0_flag == 0) {
+        if (ps4.R2 == 1)
+        {
+            if (PH_0_flag == 0)
+            {
                 int16_t UnderUp416 = static_cast<int16_t>(0);
                 DATA[6] = UnderUp416 >> 8;
                 DATA[7] = UnderUp416 & 0xFF;
-            } else if (PH_0_flag == 1) {
+            }
+            else if (PH_0_flag == 1)
+            {
                 int16_t UnderUp416 = static_cast<int16_t>(1500);
                 DATA[6] = UnderUp416 >> 8;
                 DATA[7] = UnderUp416 & 0xFF;
             }
         }
-        if (ps4.L2 == 1) {
-            if (PH_1_flag == 0) {
+        if (ps4.L2 == 1)
+        {
+            if (PH_1_flag == 0)
+            {
                 int16_t UnderUp416 = static_cast<int16_t>(0);
                 DATA[6] = UnderUp416 >> 8;
                 DATA[7] = UnderUp416 & 0xFF;
-            } else if (PH_1_flag == 1) {
+            }
+            else if (PH_1_flag == 1)
+            {
                 int16_t UnderUp416 = static_cast<int16_t>(1500);
                 DATA[6] = -UnderUp416 >> 8;
                 DATA[7] = -UnderUp416 & 0xFF;
             }
         }
-        if (ps4.R2 == 0 && ps4.L2 == 0) {
+        if (ps4.R2 == 0 && ps4.L2 == 0)
+        {
             int16_t UnderUp416 = static_cast<int16_t>(0);
             DATA[6] = UnderUp416 >> 8;
             DATA[7] = UnderUp416 & 0xFF;
         }
 
         // 高松
-        if (ps4.R1 == 1 && PC_10_flag == 1) {
+        if (ps4.R1 == 1 && PC_10_flag == 1)
+        {
             int16_t Takamatsu416 = static_cast<int16_t>(3500);
             DATA[0] = Takamatsu416 >> 8;
             DATA[1] = Takamatsu416 & 0xFF;
-        } else if (ps4.R1 == 1 && PC_10_flag == 0) {
+        }
+        else if (ps4.R1 == 1 && PC_10_flag == 0)
+        {
             int16_t Takamatsu416 = static_cast<int16_t>(1700);
             DATA[0] = Takamatsu416 >> 8;
             DATA[1] = Takamatsu416 & 0xFF;
-        } else if (ps4.R1 == 0 && ps4.L1 == 0) {
+        }
+        else if (ps4.R1 == 0 && ps4.L1 == 0)
+        {
             int16_t Takamatsu416 = static_cast<int16_t>(0);
             DATA[0] = Takamatsu416 >> 8;
             DATA[1] = Takamatsu416 & 0xFF;
-        } else if (ps4.L1 == 1) {
+        }
+        else if (ps4.L1 == 1)
+        {
             int16_t Takamatsu416 = static_cast<int16_t>(1500);
             DATA[0] = -Takamatsu416 >> 8;
             DATA[1] = -Takamatsu416 & 0xFF;
         }
         // 発射
-        if (ps4.Triangle == 1) {
-            penguin.pwm[2] = std::min(3700, penguin.pwm[2] + 600);
-            penguin.pwm[3] = std::max(-3700, penguin.pwm[3] - 600);
-        } else if (ps4.Triangle == 0) {
-            penguin.pwm[2] = std::max(0, penguin.pwm[2] - 600);
-            penguin.pwm[3] = std::min(0, penguin.pwm[3] + 600);
+        if (ps4.Triangle == 1)
+        {
+            penguin.pwm[2] = std::min(2700, penguin.pwm[2] + 600);
         }
-        // バシバシ
-        // if (ps4.Circle == 1) {
-        //     bashibashi = 7000;
-        // } else if (ps4.Circle == 0) {
-        //     bashibashi = 0;
-        // }
+        else if (ps4.Triangle == 0)
+        {
+            penguin.pwm[2] = std::max(0, penguin.pwm[2] - 600);
+        }
+        //  バシバシ
+        if (ps4.Circle == 1)
+        {
+            bashibashi = 2000;
+        }
+        else if (ps4.Circle == 0)
+        {
+            bashibashi = 0;
+        }
 
         // サーボ
-        if (ps4.Cross == 1) {
+        if (ps4.Cross == 1)
+        {
             Kodai += 1;
         }
-        if (ps4.Square == 1) {
+        if (ps4.Square == 1)
+        {
             Kodai -= 1;
         }
 
-        if (ps4.Circle == 1) {
+        if (ps4.Up == 1)
+        {
             Kodaiho = std::min(1600, Kodaiho + 6);
             MINIMA.pulsewidth_us(Kodaiho);
-        } else if (ps4.Circle == 0) {
+        }
+        else if (ps4.Up == 0)
+        {
             Kodaiho = std::max(1000, Kodaiho - 6);
             MINIMA.pulsewidth_us(Kodaiho);
         }
 
         auto now_Kodaiho = HighResClock::now();
-        if (pre_Kodaiho == HighResClock::time_point()) {
+        if (pre_Kodaiho == HighResClock::time_point())
+        {
             pre_Kodaiho = now_Kodaiho;
         }
-        if (now_Kodaiho - pre_Kodaiho <= 100ms) {
+        if (now_Kodaiho - pre_Kodaiho <= 100ms)
+        {
             return;
         }
-        if (ps4.SHARE == 1) {
+        if (ps4.SHARE == 1)
+        {
             angle_flag = !angle_flag;
             Kodai += angle_flag ? 1 : -1;
             pre_Kodaiho = now_Kodaiho;
@@ -334,12 +386,12 @@ void CANSend() {
         int move2_pid = p_move2.calculate(move2, move2_speed);
         int move3_pid = p_move3.calculate(move3, move3_speed);
 
-        // printf("PID Output: move0_pid = %d, move1_pid = %d, move2_pid "
-        //        "= %d, "
-        //        "move3_pid = %d\n",
-        //        move0_pid, move1_pid, move2_pid, move3_pid);
+        printf("PID Output: move0_pid = %d, move1_pid = %d, move2_pid "
+               "= %d, "
+               "move3_pid = %d\n",
+               move0_pid, move1_pid, move2_pid, move3_pid);
 
-        // 足回り
+        //  足回り
         int16_t move0416 = static_cast<int16_t>(move0_pid);
         int16_t move1416 = static_cast<int16_t>(move1_pid);
         int16_t move2416 = static_cast<int16_t>(move2_pid);
@@ -377,24 +429,36 @@ void CANSend() {
         CANMessage msg0(0x1ff, DATA, 8);
         CANMessage servo_msg(140, servo, 8);
 
-        if (can2.write(servo_msg)) {
-            // printf("[servo]:can");
-        } else {
+        if (can2.write(servo_msg))
+        {
+            printf("[servo]:can");
+        }
+        else
+        {
             printf("[servo]:can not");
         }
-        if (can1.write(msg_move)) {
-            // printf("[move]:can");
-        } else {
+        if (can1.write(msg_move))
+        {
             printf("[move]:can");
         }
-        if (can1.write(msg0)) {
-            // printf("[msg0]:can");
-        } else {
+        else
+        {
+            printf("[move]:can");
+        }
+        if (can1.write(msg0))
+        {
+            printf("[msg0]:can");
+        }
+        else
+        {
             printf("[msg0]:can not");
         }
-        if (penguin.send()) {
-            // printf("[FP]:can\n");
-        } else {
+        if (penguin.send())
+        {
+            printf("[FP]:can\n");
+        }
+        else
+        {
             printf("[FP]:can not \n");
         }
 
@@ -402,7 +466,8 @@ void CANSend() {
     }
 }
 
-int main() {
+int main()
+{
     std::vector<double> joy_nums;
     pc.set_baud(115200);
     pc.set_blocking(false);
@@ -424,17 +489,22 @@ int main() {
     SWPH_0.mode(PullUp);
     SWPH_1.mode(PullUp);
 
-    while (true) {
+    while (true)
+    {
         std::string msg = serial.read_serial();
-        if (msg != "") {
-            if (msg[0] == 'n') {
+        if (msg != "")
+        {
+            if (msg[0] == 'n')
+            {
                 msg.erase(0, 2);
                 joy_nums = to_numbers(msg);
                 ps4.LX = joy_nums[0];
                 ps4.LY = joy_nums[1];
                 ps4.RX = joy_nums[2];
                 ps4.RY = joy_nums[3];
-            } else {
+            }
+            else
+            {
                 controller_read(msg);
             }
         }
