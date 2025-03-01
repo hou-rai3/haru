@@ -329,10 +329,10 @@ void CANSend() {
         int move2_pid = p_move2.calculate(move2, move2_speed);
         int move3_pid = p_move3.calculate(move3, move3_speed);
 
-        // printf("PID Output: move0_pid = %d, move1_pid = %d, move2_pid "
-        //        "= %d, "
-        //        "move3_pid = %d\n",
-        //        move0_pid, move1_pid, move2_pid, move3_pid);
+        printf("PID Output: move0_pid = %d, move1_pid = %d, move2_pid "
+               "= %d, "
+               "move3_pid = %d\n",
+               move0_pid, move1_pid, move2_pid, move3_pid);
 
         //  足回り
         int16_t move0416 = static_cast<int16_t>(move0_pid);
@@ -398,8 +398,7 @@ void CANSend() {
 }
 
 int main() {
-    // printf("[controller_tester]setup!!\n");
-
+    printf("[controller_tester]setup!!\n");
     std::vector<double> joy_nums;
     pc.set_baud(115200);
     pc.set_blocking(false);
