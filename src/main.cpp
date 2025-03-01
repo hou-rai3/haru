@@ -33,7 +33,7 @@ auto pre_Kodaiho = HighResClock::time_point();
 auto pre_servo = HighResClock::time_point();
 
 DigitalIn Userbutton(BUTTON1);
-DigitalIn SW_10(PC_10);
+DigitalIn SW_10(PC_13);
 bool PC_10_flag = false;
 DigitalIn SW_1(PC_1);
 bool PC_1_flag = false;
@@ -222,22 +222,22 @@ void CANSend() {
             pre_PC_2 = HighResClock::time_point();
         }
         // 床
-        if (ps4.R2 == 1 && PH_1_flag == 0) {
-            int16_t UnderUp416 = static_cast<int16_t>(0);
-            DATA[6] = UnderUp416 >> 8;
-            DATA[7] = UnderUp416 & 0xFF;
-        }
+        // if (ps4.R2 == 1 && PH_1_flag == 0) {
+        //     int16_t UnderUp416 = static_cast<int16_t>(0);
+        //     DATA[6] = UnderUp416 >> 8;
+        //     DATA[7] = UnderUp416 & 0xFF;
+        // }
         if (ps4.R2 == 1) {
             int16_t UnderUp416 = static_cast<int16_t>(3000);
             DATA[6] = UnderUp416 >> 8;
             DATA[7] = UnderUp416 & 0xFF;
         }
 
-        if (ps4.L2 == 1 && PH_0_flag == 0) {
-            int16_t UnderUp416 = static_cast<int16_t>(0);
-            DATA[6] = UnderUp416 >> 8;
-            DATA[7] = UnderUp416 & 0xFF;
-        }
+        // if (ps4.L2 == 1 && PH_0_flag == 0) {
+        //     int16_t UnderUp416 = static_cast<int16_t>(0);
+        //     DATA[6] = UnderUp416 >> 8;
+        //     DATA[7] = UnderUp416 & 0xFF;
+        // }
         if (ps4.L2 == 1) {
             int16_t UnderUp416 = static_cast<int16_t>(3000);
             DATA[6] = -UnderUp416 >> 8;
@@ -276,7 +276,7 @@ void CANSend() {
         }
         //  バシバシ
         if (ps4.Circle == 1) {
-            bashibashi = 5000;
+            bashibashi = 6000;
         } else if (ps4.Circle == 0) {
             bashibashi = 0;
         }
@@ -398,6 +398,8 @@ void CANSend() {
 }
 
 int main() {
+    // printf("[controller_tester]setup!!\n");
+
     std::vector<double> joy_nums;
     pc.set_baud(115200);
     pc.set_blocking(false);
@@ -411,8 +413,6 @@ int main() {
     Thread thread2;
     thread1.start(CANReceive);
     thread2.start(CANSend);
-
-    printf("[controller_tester]setup!!\n");
 
     SW_10.mode(PullUp);
     SW_1.mode(PullUp);
