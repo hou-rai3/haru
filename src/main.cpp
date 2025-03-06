@@ -1,4 +1,5 @@
 #include "PID.hpp"
+#include "QEI.h"
 #include "firstpenguin.hpp"
 #include "mbed.h"
 #include "serial_read.hpp"
@@ -7,6 +8,11 @@
 #include <sstream>
 #include <string>
 #include <vector>
+
+#define PPR 512  // エンコーダの1回転あたりのパルス数
+Ticker rpm_ticker;
+volatile int rpm = 0;
+
 BufferedSerial uart(PB_6, PA_10, 9600);
 PwmOut MINIMA(D5); // D6
 CAN can1(PA_11, PA_12, 1e6);
@@ -18,6 +24,7 @@ PID p_move0(0.5, 0.0, 0.01, 0.02);
 PID p_move1(0.5, 0.0, 0.01, 0.02);
 PID p_move2(0.5, 0.0, 0.01, 0.02);
 PID p_move3(0.5, 0.0, 0.01, 0.02);
+PID ball(0.5, 0.0, 0.01, 0.02);
 uint8_t servo[8] = {};
 uint8_t DATA_move[8] = {};
 uint8_t DATA[8] = {};
@@ -34,6 +41,8 @@ auto pre_PC_2 = HighResClock::time_point();
 auto pre_Kodaiho = HighResClock::time_point();
 auto pre_servo = HighResClock::time_point();
 auto pre_RYUGU = HighResClock::time_point();
+
+QEI encoder(PC_6, PC_7, NC, PPR, QEI::X4_ENCODING);  // A相, B相, インデックス, PPR, エンコーディングモード
 
 DigitalOut led(LED1);
 
@@ -92,6 +101,16 @@ std::vector<double> to_numbers(const std::string &input) {
         numbers.push_back(std::stod(token)); // 文字列をdoubleに変換
     }
     return numbers;
+}
+
+void calculate_rpm() {
+    static int last_pulses = 0;
+    int current_pulses = encoder.getPulses();
+    int delta_pulses = current_pulses - last_pulses;
+    last_pulses = current_pulses;
+
+    // 0.01秒間に取得したパルス数からRPMを計算
+    rpm = (delta_pulses * 6000) / (PPR * 4);  // 4逓倍の場合
 }
 
 void controller_read(const std::string buffer) {
@@ -332,9 +351,9 @@ void CANSend() {
         }
         // 発射
         if (ps4.Triangle == 1) {
-            penguin.pwm[2] = std::min(6500, penguin.pwm[2] + 600);
+            penguin.pwm[2] = ball.calculate(2000, rpm);
         } else if (ps4.Triangle == 0) {
-            penguin.pwm[2] = std::max(0, penguin.pwm[2] - 600);
+            penguin.pwm[2] = 0;
         }
         //  バシバシ
         if (ps4.Circle == 1) {
@@ -477,6 +496,7 @@ void CANSend() {
 }
 
 int main() {
+    rpm_ticker.attach(&calculate_rpm, 0.01);
     printf("[controller_tester]setup!!\n");
     std::vector<double> joy_nums;
     pc.set_baud(115200);
