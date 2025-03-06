@@ -21,7 +21,9 @@ PID p_move3(0.5, 0.0, 0.01, 0.02);
 uint8_t servo[8] = {};
 uint8_t DATA_move[8] = {};
 uint8_t DATA[8] = {};
-int16_t move0_speed = 0, move1_speed = 0, move2_speed = 0, move3_speed = 0;
+int16_t move0_speed = 0, move1_speed = 0, move2_speed = 0, move3_speed = 0,
+        bashibashi_speed = 0, Takamatsu_speed = 0, UnderUp_speed = 0;
+
 int Takamatsu = 0, UnderUp = 0, bashibashi = 0;
 int servovo = 130;
 int Kodai = 70;
@@ -174,6 +176,18 @@ void CANReceive() {
                 move3_speed = (msg.data[2] << 8) | msg.data[3];
                 // printf("picAngle_d = %d\n", picAngle_d);
                 break;
+            case 0x205:
+                Takamatsu_speed = (msg.data[2] << 8) | msg.data[3];
+                break;
+            case 0x206:
+                move0_speed = (msg.data[2] << 8) | msg.data[3];
+                break;
+            case 0x207:
+                UnderUp_speed = (msg.data[2] << 8) | msg.data[3];
+                break;
+            case 0x208:
+                bashibashi_speed = (msg.data[2] << 8) | msg.data[3];
+                break;
             default:
                 break;
             }
@@ -279,27 +293,42 @@ void CANSend() {
 
         // 高松
         if (ps4.R1 == 1 && PC_3_flag == 0) {
-            int16_t Takamatsu416 = static_cast<int16_t>(3000);
+            int Takamatsu_target = 3000;
+            int Takamatsu_pw =
+                pid_controller.calculate(Takamatsu_target, Takamatsu_speed);
+            int16_t Takamatsu416 = static_cast<int16_t>(Takamatsu_pw);
             DATA[0] = -Takamatsu416 >> 8;
             DATA[1] = -Takamatsu416 & 0xFF;
         } else if (ps4.R1 == 1) {
-            int16_t Takamatsu416 = static_cast<int16_t>(3400);
+            int Takamatsu_target = 3400;
+            int Takamatsu_pw =
+                pid_controller.calculate(Takamatsu_target, Takamatsu_speed);
+            int16_t Takamatsu416 = static_cast<int16_t>(Takamatsu_pw);
             DATA[0] = -Takamatsu416 >> 8;
             DATA[1] = -Takamatsu416 & 0xFF;
         }
         if (ps4.L1 == 1 && PC_4_flag == 0) {
-            int16_t Takamatsu416 = static_cast<int16_t>(0);
-            DATA[0] = Takamatsu416 >> 8;
-            DATA[1] = Takamatsu416 & 0xFF;
+            int Takamatsu_target = 0;
+            int Takamatsu_pw =
+                pid_controller.calculate(Takamatsu_target, Takamatsu_speed);
+            int16_t Takamatsu416 = static_cast<int16_t>(Takamatsu_pw);
+            DATA[0] = -Takamatsu416 >> 8;
+            DATA[1] = -Takamatsu416 & 0xFF;
         } else if (ps4.L1 == 1) {
-            int16_t Takamatsu416 = static_cast<int16_t>(1500);
-            DATA[0] = Takamatsu416 >> 8;
-            DATA[1] = Takamatsu416 & 0xFF;
+            int Takamatsu_target = 1500;
+            int Takamatsu_pw =
+                pid_controller.calculate(Takamatsu_target, Takamatsu_speed);
+            int16_t Takamatsu416 = static_cast<int16_t>(Takamatsu_pw);
+            DATA[0] = -Takamatsu416 >> 8;
+            DATA[1] = -Takamatsu416 & 0xFF;
         }
         if (ps4.R1 == 0 && ps4.L1 == 0) {
-            int16_t Takamatsu416 = static_cast<int16_t>(0);
-            DATA[0] = Takamatsu416 >> 8;
-            DATA[1] = Takamatsu416 & 0xFF;
+            int Takamatsu_target = 0;
+            int Takamatsu_pw =
+                pid_controller.calculate(Takamatsu_target, Takamatsu_speed);
+            int16_t Takamatsu416 = static_cast<int16_t>(Takamatsu_pw);
+            DATA[0] = -Takamatsu416 >> 8;
+            DATA[1] = -Takamatsu416 & 0xFF;
         }
         // 発射
         if (ps4.Triangle == 1) {
@@ -309,16 +338,22 @@ void CANSend() {
         }
         //  バシバシ
         if (ps4.Circle == 1) {
-            int16_t bashibashiInt16 = static_cast<int16_t>(6000);
+            int bashibashi_target = 6000;
+            int bashibashi_pw =
+                pid_controller.calculate(bashibashi_target, bashibashi_speed);
+            int16_t bashibashiInt16 = static_cast<int16_t>(bashibashi_pw);
             DATA[2] = bashibashiInt16 >> 8;
             DATA[3] = bashibashiInt16 & 0xFF;
         } else if (ps4.Circle == 0 && ps4.Down == 0) {
-            int16_t bashibashiInt16 = static_cast<int16_t>(0);
+            int bashibashi_target = 0;
+            int bashibashi_pw =
+                pid_controller.calculate(bashibashi_target, bashibashi_speed);
+            int16_t bashibashiInt16 = static_cast<int16_t>(bashibashi_pw);
             DATA[2] = bashibashiInt16 >> 8;
             DATA[3] = bashibashiInt16 & 0xFF;
         }
         if (ps4.Down == 1) {
-            int16_t bashibashiInt16 = static_cast<int16_t>(4000);
+            int16_t bashibashiInt16 = static_cast<int16_t>(3000);
             DATA[2] = -bashibashiInt16 >> 8;
             DATA[3] = -bashibashiInt16 & 0xFF;
         }
