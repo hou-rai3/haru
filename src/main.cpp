@@ -1,52 +1,83 @@
-#include "PID.hpp"
-#include "QEI.h"
-#include "firstpenguin.hpp"
+#include "FP.hpp"
+#include "QEI.hpp"
+#include "c610.hpp"
 #include "mbed.h"
+#include "pid.hpp"
 #include "serial_read.hpp"
+
+#include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstring>
 #include <sstream>
 #include <string>
 #include <vector>
+//------------powers----------
+#define TAKAMATU_GOAL_RPM 4000
+#define UNDER_GOAL_RPM 10000
+#define BASI2_ZEN_GOAL_RPM 13000
+#define BASI2_GO_GOAL_RPM 3500
+#define CANNON_GOAL_RPM 800 // 発射
+#define BASI2_ZENGO_POWER 10000
+#define SERVOVO_MODE0 225
+#define SERVOVO_MODE1 0
+#define KODAI_MODE0 65
+#define KODAI_MODE1 30
+//---------------buttons------------
+bool Circle = false;
+bool Cross = false;
+bool Square = false;
+bool Triangle = false;
+bool Up = false;
+bool Right = false;
+bool Down = false;
+bool Left = false;
+bool L2 = false;
+bool R2 = false;
+bool L1 = false;
+bool R1 = false;
+bool SHARE = false;
+bool OPTION = false;
+bool PS = false;
+bool L3 = false;
+bool R3 = false;
+//---------------------------
 
-#define PPR 512  // エンコーダの1回転あたりのパルス数
-Ticker rpm_ticker;
-volatile int rpm = 0;
+#define PPR 512 // エンコーダの1回転あたりのパルス数
 
-BufferedSerial uart(PB_6, PA_10, 9600);
 PwmOut MINIMA(D5); // D6
 CAN can1(PA_11, PA_12, 1e6);
 CAN can2(PB_12, PB_13, 1e6);
-FirstPenguin penguin(35, can1);
+
 BufferedSerial pc(USBTX, USBRX, 115200);
-PID pid_controller(0.4, 0.5, 0.001, 0.02);
-PID p_move0(0.5, 0.0, 0.01, 0.02);
-PID p_move1(0.5, 0.0, 0.01, 0.02);
-PID p_move2(0.5, 0.0, 0.01, 0.02);
-PID p_move3(0.5, 0.0, 0.01, 0.02);
-PID ball(0.5, 0.0, 0.01, 0.02);
+BufferedSerial arudino(PB_6, PA_10, 9600);
+serial_unit serial(pc);
+
+C610 c610(can1);
+FP fp(35, can2);
 uint8_t servo[8] = {};
-uint8_t DATA_move[8] = {};
-uint8_t DATA[8] = {};
-int16_t move0_speed = 0, move1_speed = 0, move2_speed = 0, move3_speed = 0,
-        bashibashi_speed = 0, Takamatsu_speed = 0, UnderUp_speed = 0;
 
-int Takamatsu = 0, UnderUp = 0, bashibashi = 0;
-int servovo = 130;
-int Kodai = 70;
-int maxspeed = 10000;
-int Kodaiho = 1000;
-auto pre_PC_3 = HighResClock::time_point();
+double zoukaryou = 0.003;
+
+double move_pid_Tilt_p = 1.0;
+double move_pid_Tilt_i = 1.0; // 使ってない
+double move_pid_Tilt_d = 1.0; // 使ってない
+
+// PID move_pid[4] = {PID(1.00, 0.015, 30.0), PID(1.0, 0.015, 30.0), PID(1.0,
+// 0.015, 30.0), PID(1.0, 0.015, 30.0)};
+PID move_pid[4] = {PID(1.2 * move_pid_Tilt_p, 0.015, 30.0),
+                   PID(1.5 * move_pid_Tilt_p, 0.015, 30.0),
+                   PID(1.65 * move_pid_Tilt_p, 0.015, 30.0),
+                   PID(0.8 * move_pid_Tilt_p, 0.015, 30.0)};
+PID underup_pid(1.0, 0.0, 30.0);
+PID takamatu_pid(1.8, 0.0, 5.0);
+PID bashi2_rpm_pid(1.5, 0.0, 0.5);
+PID cannon_pid(4.0, 0.1, 0.4);
+
+double move_Tilt = 6000.0;
+
+auto pre_PC_1 = HighResClock::time_point();
 auto pre_PC_2 = HighResClock::time_point();
-auto pre_Kodaiho = HighResClock::time_point();
-auto pre_servo = HighResClock::time_point();
-auto pre_RYUGU = HighResClock::time_point();
-
-QEI encoder(PC_6, PC_7, NC, PPR, QEI::X4_ENCODING);  // A相, B相, インデックス, PPR, エンコーディングモード
-
-DigitalOut led(LED1);
-
-DigitalIn Userbutton(BUTTON1);
 
 DigitalIn SW_0(PC_0); // マンジロード上
 DigitalIn SW_1(PC_1); // マンジロード下
@@ -54,6 +85,7 @@ DigitalIn SW_2(PC_2); // 前後右
 DigitalIn SW_3(PC_3); // 前後左
 DigitalIn SW_4(PC_4); // 高松上
 DigitalIn SW_5(PC_5); // 高松下
+
 bool PC_0_flag = false;
 bool PC_1_flag = false;
 bool PC_2_flag = false;
@@ -61,33 +93,31 @@ bool PC_3_flag = false;
 bool PC_4_flag = false;
 bool PC_5_flag = false;
 
-typedef struct {
-    double LX;
-    double LY;
-    double RX;
-    double RY;
+DigitalIn Userbutton(BUTTON1);
 
-    unsigned char Circle : 1;
-    unsigned char Cross : 1;
-    unsigned char Square : 1;
-    unsigned char Triangle : 1;
+QEI encoder(
+    PC_6, PC_7,
+    QEI::X4_ENCODING); // A相, B相, インデックス, PPR, エンコーディングモード
+Ticker rpm_ticker;
+volatile int cannon_rpm = 0;
 
-    unsigned char Up : 1;
-    unsigned char Right : 1;
-    unsigned char Down : 1;
-    unsigned char Left : 1;
+bool manzi_flag = false;
+bool manzi_state = false;
 
-    unsigned char L2 : 1;
-    unsigned char R2 : 1;
-    unsigned char L1 : 1;
-    unsigned char R1 : 1;
+bool ryugu_flag = false;
+bool servovo_flag = false;
+bool kodai_flag = false;
+bool takamatu_flag = false;
 
-    unsigned char SHARE : 1;
-    unsigned char OPTION : 1;
-    unsigned char PS : 1;
-} PS2Con;
+bool c610_no_pid_8 = false;
+int cannon_power = 0;
+int bashi_power = 0;
+double Kodaiho = 1000.0;
 
-PS2Con ps4;
+int servovo = 0;
+int Kodai = 70;
+
+double increment_value = 0.0;
 
 std::vector<double> to_numbers(const std::string &input) {
     std::vector<double> numbers;
@@ -108,409 +138,363 @@ void calculate_rpm() {
     int current_pulses = encoder.getPulses();
     int delta_pulses = current_pulses - last_pulses;
     last_pulses = current_pulses;
-
     // 0.01秒間に取得したパルス数からRPMを計算
-    rpm = (delta_pulses * 6000) / (PPR * 4);  // 4逓倍の場合
+    cannon_rpm = (delta_pulses * 6000) / (PPR * 4); // 4逓倍の場合
 }
 
-void controller_read(const std::string buffer) {
-    if (buffer == "ci:p")
-        ps4.Circle = 1;
-    else if (buffer == "ci:no_p")
-        ps4.Circle = 0;
-    if (buffer == "cr:p")
-        ps4.Cross = 1;
-    else if (buffer == "cr:no_p")
-        ps4.Cross = 0;
-    if (buffer == "sq:p")
-        ps4.Square = 1;
-    else if (buffer == "sq:no_p")
-        ps4.Square = 0;
-    if (buffer == "tri:p")
-        ps4.Triangle = 1;
-    else if (buffer == "tri:no_p")
-        ps4.Triangle = 0;
-    if (buffer == "L1:p")
-        ps4.L1 = 1;
-    else if (buffer == "L1:no_p")
-        ps4.L1 = 0;
-    if (buffer == "R1:p")
-        ps4.R1 = 1;
-    else if (buffer == "R1:no_p")
-        ps4.R1 = 0;
-    if (buffer == "L2:p")
-        ps4.L2 = 1;
-    else if (buffer == "L2:no_p")
-        ps4.L2 = 0;
-    if (buffer == "R2:p")
-        ps4.R2 = 1;
-    else if (buffer == "R2:no_p")
-        ps4.R2 = 0;
-    if (buffer == "SH:p")
-        ps4.SHARE = 1;
-    else if (buffer == "SH:no_p")
-        ps4.SHARE = 0;
-    if (buffer == "OP:p")
-        ps4.OPTION = 1;
-    else if (buffer == "OP:no_p")
-        ps4.OPTION = 0;
-    if (buffer == "PS:p")
-        ps4.PS = 1;
-    else if (buffer == "PS:no_p")
-        ps4.PS = 0;
-    if (buffer == "u:p")
-        ps4.Up = 1;
-    else if (buffer == "u:no_p")
-        ps4.Up = 0;
-    if (buffer == "d:p")
-        ps4.Down = 1;
-    else if (buffer == "d:no_p")
-        ps4.Down = 0;
-    if (buffer == "l:p")
-        ps4.Left = 1;
-    else if (buffer == "l:no_p")
-        ps4.Left = 0;
-    if (buffer == "r:p")
-        ps4.Right = 1;
-    else if (buffer == "r:no_p")
-        ps4.Right = 0;
-}
-
-void CANReceive() {
-    while (1) {
-        CANMessage msg;
-        if (can1.read(msg)) {
-            // printf("kitayo\n");、
-            switch (msg.id) {
-            case 0x201:
-                move0_speed = (msg.data[2] << 8) | msg.data[3];
-                break;
-            case 0x202:
-                move1_speed = (msg.data[2] << 8) | msg.data[3];
-                break;
-            case 0x203:
-                move2_speed = (msg.data[2] << 8) | msg.data[3];
-                break;
-            case 0x204:
-                move3_speed = (msg.data[2] << 8) | msg.data[3];
-                // printf("picAngle_d = %d\n", picAngle_d);
-                break;
-            case 0x205:
-                Takamatsu_speed = (msg.data[2] << 8) | msg.data[3];
-                break;
-            case 0x206:
-                move0_speed = (msg.data[2] << 8) | msg.data[3];
-                break;
-            case 0x207:
-                UnderUp_speed = (msg.data[2] << 8) | msg.data[3];
-                break;
-            case 0x208:
-                bashibashi_speed = (msg.data[2] << 8) | msg.data[3];
-                break;
-            default:
-                break;
-            }
-        }
+void move(std::string msg) {
+    msg.erase(0, 2);
+    std::vector<double> joys = to_numbers(msg);
+    double move[4] = {(joys[0] - joys[1] - joys[2] * 0.8) * move_Tilt,
+                      -(joys[0] - joys[1] + joys[2] * 0.8) * move_Tilt,
+                      -(joys[0] + joys[1] + joys[2] * 0.8) * move_Tilt,
+                      (joys[1] + joys[0] - joys[2] * 0.8) * move_Tilt};
+    for (size_t i = 0; i < joys.size(); i++) {
+        move_pid[i].set_goal(move[i]);
     }
 }
-bool toggle_flag = false;
-bool angle_flag = false;
 
-void updateTarget(int &move, int &move_mokuhyou) {
-    int increment = (move_mokuhyou < 2000)
-                        ? 250
-                        : 1000; // Choose increment based on target value
+void key_puress(std::string &msg) {
+    if (msg == "ci:p")
+        Circle = true;
+    else if (msg == "ci:no_p")
+        Circle = false;
 
-    if (move > move_mokuhyou) {
-        move_mokuhyou += increment;
-    } else if (move < move_mokuhyou) {
-        move_mokuhyou -= increment;
+    if (msg == "cr:p")
+        Cross = true;
+    else if (msg == "cr:no_p")
+        Cross = false;
+
+    if (msg == "sq:p")
+        Square = true;
+    else if (msg == "sq:no_p")
+        Square = false;
+
+    if (msg == "tri:p")
+        Triangle = true;
+    else if (msg == "tri:no_p")
+        Triangle = false;
+
+    if (msg == "L1:p")
+        L1 = true;
+    else if (msg == "L1:no_p")
+        L1 = false;
+
+    if (msg == "R1:p")
+        R1 = true;
+    else if (msg == "R1:no_p")
+        R1 = false;
+
+    if (msg == "L2:p")
+        L2 = true;
+    else if (msg == "L2:no_p")
+        L2 = false;
+
+    if (msg == "R2:p")
+        R2 = true;
+    else if (msg == "R2:no_p")
+        R2 = false;
+
+    if (msg == "SH:p")
+        SHARE = true;
+    else if (msg == "SH:no_p")
+        SHARE = false;
+
+    if (msg == "OP:p")
+        OPTION = true;
+    else if (msg == "OP:no_p")
+        OPTION = false;
+
+    if (msg == "PS:p")
+        PS = true;
+    else if (msg == "PS:no_p")
+        PS = false;
+
+    if (msg == "u:p")
+        Up = true;
+    else if (msg == "u:no_p")
+        Up = false;
+
+    if (msg == "d:p")
+        Down = true;
+    else if (msg == "d:no_p")
+        Down = false;
+
+    if (msg == "l:p")
+        Left = true;
+    else if (msg == "l:no_p")
+        Left = false;
+
+    if (msg == "r:p")
+        Right = true;
+    else if (msg == "r:no_p")
+        Right = false;
+
+    if (msg == "L3:p")
+        L3 = true;
+    else if (msg == "L3:no_p")
+        L3 = false;
+
+    if (msg == "R3:p")
+        R3 = true;
+    else if (msg == "R3:no_p")
+        R3 = false;
+}
+
+void key_binding() {
+
+    PC_0_flag = SW_0.read();
+    PC_1_flag = SW_1.read();
+    PC_2_flag = SW_2.read();
+    PC_3_flag = SW_3.read();
+    PC_4_flag = SW_4.read();
+    PC_5_flag = SW_5.read();
+
+    // if (!PC_0_flag)
+    //     printf("PC_0:");
+    // if (!PC_1_flag)
+    //     printf("PC_1:");
+    // if (!PC_2_flag)
+    //     printf("PC_2:");
+    // if (!PC_3_flag)
+    //     printf("PC_3:");
+    // if (!PC_4_flag)
+    //     printf("PC_4:");
+    // if (!PC_5_flag)
+    //     printf("PC_5:");
+    // printf("\n");
+
+    // バシバシ前後
+    if (Up && !R3) {
+        fp.pwm[0] = -BASI2_ZENGO_POWER;
+        fp.pwm[1] = BASI2_ZENGO_POWER;
+    } else if (Down && !R3) {
+        fp.pwm[0] = BASI2_ZENGO_POWER;
+        fp.pwm[1] = -BASI2_ZENGO_POWER;
+    } else if (!Up && !Down) {
+        fp.pwm[0] = 0;
+        fp.pwm[1] = 0;
+    }
+    if (PC_2_flag == 0) {
+        auto now_PC_1 = HighResClock::now();
+        if (pre_PC_1 == HighResClock::time_point()) {
+            pre_PC_1 = now_PC_1;
+        }
+        if (now_PC_1 - pre_PC_1 <= 1000ms) {
+            fp.pwm[0] = 0;
+        }
+    } else {
+        pre_PC_1 = HighResClock::time_point();
+    }
+
+    if (PC_3_flag == 0) {
+        auto now_PC_2 = HighResClock::now();
+        if (pre_PC_2 == HighResClock::time_point()) {
+            pre_PC_2 = now_PC_2;
+        }
+        if (now_PC_2 - pre_PC_2 <= 1000ms) {
+            fp.pwm[1] = 0;
+        }
+    } else {
+        pre_PC_2 = HighResClock::time_point();
+    }
+    // 卍ろーど
+    if (L2) {
+        c610_no_pid_8 = false;
+        if (PC_1_flag) {
+            underup_pid.set_goal(-UNDER_GOAL_RPM);
+        } else if (!PC_1_flag) {
+            underup_pid.set_goal(0);
+        }
+    } else if (R2) {
+        c610_no_pid_8 = false;
+        if (PC_0_flag) {
+            underup_pid.set_goal(UNDER_GOAL_RPM);
+        } else if (!PC_0_flag) {
+            underup_pid.set_goal(0);
+        }
+    } else if (!R2 && !L2) {
+        underup_pid.set_goal(0);
+    }
+    // 高松
+    if (L1 && PC_5_flag) {
+        takamatu_flag = false;
+        takamatu_pid.set_goal(TAKAMATU_GOAL_RPM);
+    } else if (L1 && !PC_5_flag) {
+        c610_no_pid_8 = true;
+        takamatu_pid.set_goal(0);
+        c610.set_power(5, 0);
+    } else if (!L1 && !R1) {
+        takamatu_pid.set_goal(0);
+    } else if (R1 && PC_4_flag) {
+        takamatu_pid.set_goal(-TAKAMATU_GOAL_RPM);
+    } else if (R1 && !PC_4_flag) {
+        takamatu_flag = true;
+    }
+    if (takamatu_flag) {
+        c610_no_pid_8 = true;
+        takamatu_pid.set_goal(0);
+        c610.set_power(5, -2400);
+    }
+    // 発射
+    if (Triangle) {
+        cannon_pid.set_goal(CANNON_GOAL_RPM);
+        // cannon_power = cannon_pid.do_pid(c610.get_rpm(5));
+    } else if (Triangle == false) {
+        cannon_pid.set_goal(0);
+        // cannon_power = cannon_pid.do_pid(c610.get_rpm(5));
+    }
+    // bashi2
+    if (Right && !R3) {
+        bashi2_rpm_pid.set_goal(-BASI2_GO_GOAL_RPM);
+        bashi_power = bashi2_rpm_pid.do_pid(c610.get_rpm(6));
+    } else if (Circle) {
+        bashi2_rpm_pid.set_goal(BASI2_ZEN_GOAL_RPM);
+        bashi_power = bashi2_rpm_pid.do_pid(c610.get_rpm(6));
+    } else {
+        bashi2_rpm_pid.set_goal(0);
+        bashi_power = bashi2_rpm_pid.do_pid(c610.get_rpm(6));
+    }
+
+    // sa-bo
+    if (Cross) {
+        if (!servovo_flag) {
+            // サーボ角度をトグル
+            servovo =
+                (servovo == SERVOVO_MODE0) ? SERVOVO_MODE1 : SERVOVO_MODE0;
+            servovo_flag = true; // トグルしたのでフラグを設定
+        }
+    } else {
+        servovo_flag = false; // ボタンが押されていない場合、フラグをリセット
+    }
+    // if (Cross) {
+    //         fp.pwm[3] = SER_FP_POWER;
+    // }
+    // else if(Square)
+    // {
+    //     fp.pwm[3] = -SER_FP_POWER;
+    // }
+    // else{
+    //     fp.pwm[3] = 0;
+    // }
+    // Koudai砲モータ
+    if (OPTION) {
+        Kodaiho = std::min(1600.0, Kodaiho + 0.7);
+        MINIMA.pulsewidth_us(Kodaiho);
+    } else if (!OPTION) {
+        Kodaiho = std::max(1000.0, Kodaiho - 0.7);
+        MINIMA.pulsewidth_us(Kodaiho);
+    }
+    // Koudai砲サーボ
+    if (Square) {
+        if (!kodai_flag) {
+            Kodai = (Kodai == KODAI_MODE0) ? KODAI_MODE1 : KODAI_MODE0;
+            kodai_flag = true;
+        }
+    } else {
+        kodai_flag = false;
+    }
+    // 竜宮宣言
+    if (!Left && ryugu_flag) {
+        ryugu_flag = false;
+    } else if (Left && !ryugu_flag) {
+        arudino.write("ryugu", 5);
+        ryugu_flag = true;
     }
 }
-void CANSend() {
-    // int move0_mokuhyou = 0;
-    // int move1_mokuhyou = 0;
-    // int move2_mokuhyou = 0;
-    // int move3_mokuhyou = 0;
 
+void serial_read() {
     while (1) {
-        PC_0_flag = SW_0.read();
-        PC_1_flag = SW_1.read();
-        PC_2_flag = SW_2.read();
-        PC_3_flag = SW_3.read();
-        PC_4_flag = SW_4.read();
-        PC_5_flag = SW_5.read();
 
-        if (ps4.SHARE == 1) {
-            auto now_RYUGU = HighResClock::now();
-            if (now_RYUGU - pre_RYUGU > 300ms) {
-                uart.write("ryugu", 5);
-                pre_RYUGU = now_RYUGU;
+        std::string msg = serial.read_serial();
+        if (msg != "") {
+            if (msg[0] == 'n') {
+                if (R3 && Right) {
+                    msg = "n:-0.500000:0.000000:0.000000:0.000000|";
+                    printf("Updated msg: %s\n",
+                           msg.c_str()); // 増加した値を表示
+                } else if (R3 && Left) {
+                    msg = "n:0.500000:0.000000:0.000000:0.000000|";
+                    printf("Updated msg: %s\n",
+                           msg.c_str()); // 増加した値を表示
+                } else if (R3 && Up) {
+                    msg = "n:0.000000:0.500000:0.000000:0.000000|";
+                    printf("Updated msg: %s\n",
+                           msg.c_str()); // 増加した値を表示
+                } else if (R3 && Down) {
+                    msg = "n:0.000000:-0.500000:0.000000:0.000000|";
+                    printf("Updated msg: %s\n",
+                           msg.c_str()); // 増加した値を表示
+                }
+                // 前だけに進むやつ
+                if (PS) {
+                    increment_value += zoukaryou;
+                    // msgの中の値を動的に変更
+                    char buffer[100];
+                    snprintf(buffer, sizeof(buffer),
+                             "n:0.000000:%.6f:0.000000:0.000000|",
+                             increment_value);
+                    msg = buffer; // msgに新しい値を設定
+                    printf("Updated msg: %s\n",
+                           msg.c_str()); // 増加した値を表示
+                }
+                move(msg);
+            } else {
+                key_puress(msg);
             }
         }
-        // バシバシ前後
-        if (ps4.Right == 1) {
-            penguin.pwm[0] = -15000;
-            penguin.pwm[1] = 15000;
-        }
-        if (ps4.Left == 1) {
-            penguin.pwm[0] = 15000;
-            penguin.pwm[1] = -15000;
-        }
-        if (ps4.Left == 0 && ps4.Right == 0) {
-            penguin.pwm[0] = 0;
-            penguin.pwm[1] = 0;
-        }
-        if (PC_2_flag == 0) {
-            auto now_PC_2 = HighResClock::now();
-            if (pre_PC_2 == HighResClock::time_point()) {
-                pre_PC_2 = now_PC_2;
-            }
-            if (now_PC_2 - pre_PC_2 <= 1000ms) {
-                penguin.pwm[0] = 0;
-            }
-        } else {
-            pre_PC_2 = HighResClock::time_point();
-        }
+        key_binding();
+        // ThisThread::sleep_for(10ms);
+    }
+}
 
-        if (PC_3_flag == 0) {
-            auto now_PC_3 = HighResClock::now();
-            if (pre_PC_3 == HighResClock::time_point()) {
-                pre_PC_3 = now_PC_3;
-            }
-            if (now_PC_3 - pre_PC_3 <= 1000ms) {
-                penguin.pwm[1] = 0;
-            }
-        } else {
-            pre_PC_3 = HighResClock::time_point();
-        }
-        // マンジロード
-        if (ps4.R2 == 1 && PC_0_flag == 0) {
-            int16_t UnderUp416 = static_cast<int16_t>(0);
-            DATA[6] = UnderUp416 >> 8;
-            DATA[7] = UnderUp416 & 0xFF;
-        } else if (ps4.R2 == 1) {
-            int16_t UnderUp416 = static_cast<int16_t>(1500);
-            DATA[6] = UnderUp416 >> 8;
-            DATA[7] = UnderUp416 & 0xFF;
-        }
-        if (ps4.L2 == 1 && PC_1_flag == 0) {
-            int16_t UnderUp416 = static_cast<int16_t>(0);
-            DATA[6] = UnderUp416 >> 8;
-            DATA[7] = UnderUp416 & 0xFF;
-        } else if (ps4.L2 == 1) {
-            int16_t UnderUp416 = static_cast<int16_t>(1500);
-            DATA[6] = -UnderUp416 >> 8;
-            DATA[7] = -UnderUp416 & 0xFF;
-        }
+void PID_calculation() {
+    auto pre_time = HighResClock::now();
+    while (1) {
+        auto now_time = HighResClock::now();
+        c610.param_update();
 
-        if (ps4.R2 == 0 && ps4.L2 == 0) {
-            int16_t UnderUp416 = static_cast<int16_t>(0);
-            DATA[6] = UnderUp416 >> 8;
-            DATA[7] = UnderUp416 & 0xFF;
-        }
+        double dt = std::chrono::duration_cast<std::chrono::microseconds>(
+                        now_time - pre_time)
+                        .count() /
+                    1000000.0;
+        for (int i = 0; i < 4; i++)
+            move_pid[i].set_dt(dt);
+        takamatu_pid.set_dt(dt);
+        underup_pid.set_dt(dt);
+        cannon_pid.set_dt(dt);
+        bashi2_rpm_pid.set_dt(dt);
+        c610.set_power(1, move_pid[0].do_pid(c610.get_rpm(1)));
+        c610.set_power(2, move_pid[1].do_pid(c610.get_rpm(2)));
+        c610.set_power(3, move_pid[2].do_pid(c610.get_rpm(3)));
+        c610.set_power(4, move_pid[3].do_pid(c610.get_rpm(4)));
+        if (!c610_no_pid_8)
+            c610.set_power(5, takamatu_pid.do_pid(c610.get_rpm(5)));
+        c610.set_power(6, bashi_power);
+        // c610.set_power(7, cannon_power);
+        c610.set_power(8, underup_pid.do_pid(c610.get_rpm(8)));
+        // printf("cannon_power: %d\n", c610.get_rpm(7));
+        fp.pwm[3] = cannon_pid.do_pid(cannon_rpm);
+        printf("RPM: %d:", cannon_rpm);
 
-        // 高松
-        if (ps4.R1 == 1 && PC_3_flag == 0) {
-            int Takamatsu_target = 3000;
-            int Takamatsu_pw =
-                pid_controller.calculate(Takamatsu_target, Takamatsu_speed);
-            int16_t Takamatsu416 = static_cast<int16_t>(Takamatsu_pw);
-            DATA[0] = -Takamatsu416 >> 8;
-            DATA[1] = -Takamatsu416 & 0xFF;
-        } else if (ps4.R1 == 1) {
-            int Takamatsu_target = 3400;
-            int Takamatsu_pw =
-                pid_controller.calculate(Takamatsu_target, Takamatsu_speed);
-            int16_t Takamatsu416 = static_cast<int16_t>(Takamatsu_pw);
-            DATA[0] = -Takamatsu416 >> 8;
-            DATA[1] = -Takamatsu416 & 0xFF;
-        }
-        if (ps4.L1 == 1 && PC_4_flag == 0) {
-            int Takamatsu_target = 0;
-            int Takamatsu_pw =
-                pid_controller.calculate(Takamatsu_target, Takamatsu_speed);
-            int16_t Takamatsu416 = static_cast<int16_t>(Takamatsu_pw);
-            DATA[0] = -Takamatsu416 >> 8;
-            DATA[1] = -Takamatsu416 & 0xFF;
-        } else if (ps4.L1 == 1) {
-            int Takamatsu_target = 1500;
-            int Takamatsu_pw =
-                pid_controller.calculate(Takamatsu_target, Takamatsu_speed);
-            int16_t Takamatsu416 = static_cast<int16_t>(Takamatsu_pw);
-            DATA[0] = -Takamatsu416 >> 8;
-            DATA[1] = -Takamatsu416 & 0xFF;
-        }
-        if (ps4.R1 == 0 && ps4.L1 == 0) {
-            int Takamatsu_target = 0;
-            int Takamatsu_pw =
-                pid_controller.calculate(Takamatsu_target, Takamatsu_speed);
-            int16_t Takamatsu416 = static_cast<int16_t>(Takamatsu_pw);
-            DATA[0] = -Takamatsu416 >> 8;
-            DATA[1] = -Takamatsu416 & 0xFF;
-        }
-        // 発射
-        if (ps4.Triangle == 1) {
-            penguin.pwm[2] = ball.calculate(2000, rpm);
-        } else if (ps4.Triangle == 0) {
-            penguin.pwm[2] = 0;
-        }
-        //  バシバシ
-        if (ps4.Circle == 1) {
-            int bashibashi_target = 6000;
-            int bashibashi_pw =
-                pid_controller.calculate(bashibashi_target, bashibashi_speed);
-            int16_t bashibashiInt16 = static_cast<int16_t>(bashibashi_pw);
-            DATA[2] = bashibashiInt16 >> 8;
-            DATA[3] = bashibashiInt16 & 0xFF;
-        } else if (ps4.Circle == 0 && ps4.Down == 0) {
-            int bashibashi_target = 0;
-            int bashibashi_pw =
-                pid_controller.calculate(bashibashi_target, bashibashi_speed);
-            int16_t bashibashiInt16 = static_cast<int16_t>(bashibashi_pw);
-            DATA[2] = bashibashiInt16 >> 8;
-            DATA[3] = bashibashiInt16 & 0xFF;
-        }
-        if (ps4.Down == 1) {
-            int16_t bashibashiInt16 = static_cast<int16_t>(3000);
-            DATA[2] = -bashibashiInt16 >> 8;
-            DATA[3] = -bashibashiInt16 & 0xFF;
-        }
-
-        // サーボ
-        if (ps4.Cross == 1) {
-            auto now_servo = HighResClock::now();
-            if (now_servo - pre_servo > 200ms) {
-                toggle_flag = !toggle_flag;
-                servovo = toggle_flag ? 150 : 0;
-                pre_servo = now_servo;
-            }
-        }
-        if (ps4.Square == 1) {
-            auto now_servo = HighResClock::now();
-            if (now_servo - pre_servo > 200ms) {
-                toggle_flag = !toggle_flag;
-                Kodai = toggle_flag ? 150 : 0;
-                pre_servo = now_servo;
-            }
-        }
-
-        if (ps4.OPTION == 1) {
-            Kodaiho = std::min(1650, Kodaiho + 6);
-            MINIMA.pulsewidth_us(Kodaiho);
-        } else if (ps4.OPTION == 0) {
-            Kodaiho = std::max(1000, Kodaiho - 6);
-            MINIMA.pulsewidth_us(Kodaiho);
-        }
-
-        // 移動
-        int move0 = (ps4.LX - ps4.LY - ps4.RX * 0.8) * 10000;
-        int move1 = -(ps4.LX - ps4.LY + ps4.RX * 0.8) * 10000;
-        int move2 = -(ps4.LX + ps4.LY + ps4.RX * 0.8) * 10000;
-        int move3 = (ps4.LY + ps4.LX - ps4.RX * 0.8) * 10000;
-        move0 = std::min(move0, maxspeed);
-        move1 = std::min(move1, maxspeed);
-        move2 = std::min(move2, maxspeed);
-        move3 = std::min(move3, maxspeed);
-        if (move0 > maxspeed)
-            move0 = maxspeed;
-        if (move1 > maxspeed)
-            move1 = maxspeed;
-        if (move2 > maxspeed)
-            move2 = maxspeed;
-        if (move3 > maxspeed)
-            move3 = maxspeed;
-
-        // updateTarget(move0, move0_mokuhyou);
-        // updateTarget(move1, move1_mokuhyou);
-        // updateTarget(move2, move2_mokuhyou);
-        // updateTarget(move3, move3_mokuhyou);
-        int move0_pid = p_move0.calculate(move0, move0_speed);
-        int move1_pid = p_move1.calculate(move1, move1_speed);
-        int move2_pid = p_move2.calculate(move2, move2_speed);
-        int move3_pid = p_move3.calculate(move3, move3_speed);
-
-        printf("PID Output: move0_pid = %d, move1_pid = %d, move2_pid "
-               "= %d, "
-               "move3_pid = %d\n",
-               move0_pid, move1_pid, move2_pid, move3_pid);
-
-        //  足回り
-        int16_t move0416 = static_cast<int16_t>(move0_pid);
-        int16_t move1416 = static_cast<int16_t>(move1_pid);
-        int16_t move2416 = static_cast<int16_t>(move2_pid);
-        int16_t move3416 = static_cast<int16_t>(move3_pid);
-        DATA_move[0] = move0416 >> 8;
-        DATA_move[1] = move0416 & 0xFF;
-
-        DATA_move[2] = move1416 >> 8;
-        DATA_move[3] = move1416 & 0xFF;
-
-        DATA_move[4] = move2416 >> 8;
-        DATA_move[5] = move2416 & 0xFF;
-
-        DATA_move[6] = move3416 >> 8;
-        DATA_move[7] = move3416 & 0xFF;
-
-        // 機構
-
-        DATA[4] = 0 >> 8;
-        DATA[5] = 0 & 0xFF;
-
-        servo[0] = 0;
-        servo[1] = Kodai;
-        servo[2] = 0;
-        servo[3] = 0;
-        servo[4] = 0;
-        servo[5] = 0;
-        servo[6] = 0;
-        servo[7] = servovo;
-
-        CANMessage msg_move(0x200, DATA_move, 8);
-        CANMessage msg0(0x1ff, DATA, 8);
-        CANMessage servo_msg(140, servo, 8);
-
-        if (can2.write(servo_msg)) {
-            // printf("[servo]:can");
-        } else {
-            printf("[servo]:can not");
-        }
-        if (can1.write(msg_move)) {
-            // printf("[move]:can");
-        } else {
-            printf("[move]:can");
-        }
-        if (can1.write(msg0)) {
-            // printf("[msg0]:can");
-        } else {
-            printf("[msg0]:can not");
-        }
-        if (penguin.send()) {
-            // printf("[FP]:can\n");
-        } else {
-            printf("[FP]:can not \n");
-        }
-
-        ThisThread::sleep_for(10ms);
+        pre_time = now_time;
+        // ThisThread::sleep_for(10ms);
     }
 }
 
 int main() {
-    rpm_ticker.attach(&calculate_rpm, 0.01);
-    printf("[controller_tester]setup!!\n");
-    std::vector<double> joy_nums;
+    Thread thread;
+    thread.start(serial_read);
+    Thread PID_thread;
+    PID_thread.start(PID_calculation);
+    std::vector<double> joys;
     pc.set_baud(115200);
     pc.set_blocking(false);
     servo[1] = Kodai;
     servo[7] = servovo;
     CANMessage servo_msg(140, servo, 8);
     can2.write(servo_msg);
-
-    serial_unit serial(pc);
-    Thread thread1;
-    Thread thread2;
-    thread1.start(CANReceive);
-    thread2.start(CANSend);
+    // rpm_ticker.attach(&calculate_rpm, 10ms);
 
     SW_0.mode(PullUp);
     SW_1.mode(PullUp);
@@ -519,19 +503,19 @@ int main() {
     SW_4.mode(PullUp);
     SW_5.mode(PullUp);
 
-    while (true) {
-        std::string msg = serial.read_serial();
-        if (msg != "") {
-            if (msg[0] == 'n') {
-                msg.erase(0, 2);
-                joy_nums = to_numbers(msg);
-                ps4.LX = joy_nums[0];
-                ps4.LY = joy_nums[1];
-                ps4.RX = joy_nums[2];
-                ps4.RY = joy_nums[3];
-            } else {
-                controller_read(msg);
-            }
-        }
+    // bashi2_rpm_pid.set_goal(4000.0);
+    printf("[robot]setup\n");
+    while (1) {
+        // printf("Cannon: %d\n", fp.pwm[2]);
+
+        servo[1] = Kodai;
+        servo[7] = servovo;
+        CANMessage servo_msg(140, servo, 8);
+
+        c610.send_message();
+        fp.send();
+        can2.write(servo_msg);
+        c610_no_pid_8 = false;
+        // ThisThread::sleep_for(10ms);
     }
 }
